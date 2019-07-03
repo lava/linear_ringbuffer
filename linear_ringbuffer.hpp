@@ -14,35 +14,40 @@
 
 namespace bev {
 
-// # A simple circular buffer for storing bytes.
+// # Linear Ringbuffer
 //
-// This ring buffer is designed for comfortable interaction with C-style APIs,
-// as it always exposes its contents as a flat array using the mmap trick:
-//
-//     (head)  <-- size -->    (tail)
-//      v                       v
-// /-----------------------------------|-------------------------------\
-// |  buffer area                      | mmapped clone of buffer area  |
-// \-----------------------------------|-------------------------------/
-//  <---------- capacity ------------->
+// This is an implementation of a ringbuffer that will always expose its contents
+// as a flat array using the mmap trick. It is mainly useful for interfacing with
+// C APIs, where this feature will save the programmer from doing a lot of the
+// arithmetic he would otherwise have to do.
 //
 //
-// --->(tail)              (head) -----~~~~>
-//      v                   v
-// /-----------------------------------|-------------------------------\
-// |  buffer area                      | mmapped clone of buffer area  |
-// \-----------------------------------|-------------------------------/
+// # Data Layout
+//
+// From the outside, the ringbuffer contents always look like a flat array
+// due to the mmap trick:
+//
+//
+//         (head)  <-- size -->    (tail)
+//          v                       v
+//     /-----------------------------------|-------------------------------\
+//     |  buffer area                      | mmapped clone of buffer area  |
+//     \-----------------------------------|-------------------------------/
+//      <---------- capacity ------------->
+//
+//
+//     --->(tail)              (head) -----~~~~>
+//          v                   v
+//     /-----------------------------------|-------------------------------\
+//     |  buffer area                      | mmapped clone of buffer area  |
+//     \-----------------------------------|-------------------------------/
 //
 //
 // # Usage
 //
-// The general idea is to use the buffer like a flat array in C functions, and
-// after reading or writing to call `commit()` to adjust the write head or
-// `consume()` to adjust the read head. 
-//
-// If there are multiple readers/writers, it is the calling code's
-// responsibility to ensure that the reads/writes and the calls to
-// produce/consume appear to be atomic, otherwise data races will occur.
+// The general idea is to use the buffer with C functions expecting a pointer
+// and a size as argument, and after reading or writing to call `commit()` to
+// adjust the write head or `consume()` to adjust the read head.
 //
 // Writing into the buffer:
 //
@@ -57,6 +62,11 @@ namespace bev {
 //     FILE* f = fopen("output.dat", "w");
 //     ssize_t n = ::write(fileno(f), rb.begin(), rb.size();
 //     rb.consume(n);
+//
+// If there are multiple readers/writers, it is the calling code's
+// responsibility to ensure that the reads/writes and the calls to
+// produce/consume appear atomic to the buffer, otherwise data races
+// will occur.
 //
 // # Errors and Exceptions
 //
@@ -120,7 +130,7 @@ namespace bev {
 // to just let the caller cast their data to `void*` rather than supporting
 // arbitrary element types.
 //
-// The initialization of the buffer is subject to failure, and sadly this cannot 
+// The initialization of the buffer is subject to failure, and sadly this cannot
 // be avoided. [1] There are two sources of errors:
 //
 //  1) Resource exhaustion. The maximum amount of available memory, file
