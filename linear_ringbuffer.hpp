@@ -18,7 +18,7 @@ namespace bev {
 //
 // This is an implementation of a ringbuffer that will always expose its contents
 // as a flat array using the mmap trick. It is mainly useful for interfacing with
-// C APIs, where this feature will save the programmer from doing a lot of the
+// C APIs, where this feature will save the programmer from doing a lot of pointer
 // arithmetic he would otherwise have to do.
 //
 //
@@ -45,22 +45,25 @@ namespace bev {
 //
 // # Usage
 //
-// The general idea is to use the buffer with C functions expecting a pointer
-// and a size as argument, and after reading or writing to call `commit()` to
-// adjust the write head or `consume()` to adjust the read head.
+// The buffer provides two (pointer, length)-pairs that can be passed to C APIs,
+// `(write_head(), free_size())` and `(read_head(), size())`.
+//
+// The general idea is to pass the appropriate one to a C function expecting
+// a pointer and size, and afterwards to call `commit()` to adjust the write
+// head or `consume()` to adjust the read head.
 //
 // Writing into the buffer:
 //
 //     bev::linear_ringbuffer rb;
 //     FILE* f = fopen("input.dat", "r");
-//     ssize_t n = ::read(fileno(f), rb.end(), rb.free_size());
+//     ssize_t n = ::read(fileno(f), rb.write_head(), rb.free_size());
 //     rb.commit(n);
 //
 // Reading from the buffer:
 //
 //     bev::linear_ringbuffer rb;
 //     FILE* f = fopen("output.dat", "w");
-//     ssize_t n = ::write(fileno(f), rb.begin(), rb.size();
+//     ssize_t n = ::write(fileno(f), rb.read_head(), rb.size();
 //     rb.consume(n);
 //
 // If there are multiple readers/writers, it is the calling code's
@@ -86,14 +89,14 @@ namespace bev {
 //
 // There should be only three possible error values:
 //
-//   ENOMEM - The system ran out of memory, file descriptors, or the maximum
-//            number of mappings would have been exceeded.
+//  `ENOMEM` - The system ran out of memory, file descriptors, or the maximum
+//             number of mappings would have been exceeded.
 //
-//   EINVAL - The `minsize` argument was 0, or 2*`minsize` did overflow.
+//  `EINVAL` - The `minsize` argument was 0, or 2*`minsize` did overflow.
 //
-//   EAGAIN - Another thread allocated memory in the area that was intended
-//            to use for the second copy of the buffer. Callers are encouraged
-//            to try again.
+//  `EAGAIN` - Another thread allocated memory in the area that was intended
+//             to use for the second copy of the buffer. Callers are encouraged
+//             to try again.
 //
 // If you prefer using exceptions, the `linear_ringbuffer(int minsize)`
 // constructor will attempt to initialize the internal buffers immediately and
@@ -170,14 +173,15 @@ public:
 	linear_ringbuffer_(size_t minsize = 640*1024);
 	~linear_ringbuffer_();
 
-	// No-exception initialization interface, see "Exceptions" section above.
+	// No-exception initialization interface, see description above.
 	linear_ringbuffer_(const delayed_init) noexcept;
 	int initialize(size_t minsize) noexcept;
 
 	void commit(size_t n) noexcept;
 	void consume(size_t n) noexcept;
-	iterator begin() noexcept;
-	iterator end() noexcept;
+	iterator read_head() noexcept;
+	iterator write_head() noexcept;
+	void clear() noexcept;
 
 	bool empty() const noexcept;
 	size_t size() const noexcept;
@@ -243,6 +247,12 @@ void linear_ringbuffer_<T>::consume(size_t n) noexcept {
 
 
 template<typename T>
+void linear_ringbuffer_<T>::clear() noexcept {
+	tail_ = head_ = size_ = 0;
+}
+
+
+template<typename T>
 size_t linear_ringbuffer_<T>::size() const noexcept {
 	return size_;
 }
@@ -281,7 +291,7 @@ auto linear_ringbuffer_<T>::begin() const noexcept -> const_iterator
 
 
 template<typename T>
-auto linear_ringbuffer_<T>::begin() noexcept -> iterator
+auto linear_ringbuffer_<T>::read_head() noexcept -> iterator
 {
 	return buffer_ + head_;
 }
@@ -290,7 +300,11 @@ auto linear_ringbuffer_<T>::begin() noexcept -> iterator
 template<typename T>
 auto linear_ringbuffer_<T>::cend() const noexcept -> const_iterator
 {
-	return buffer_ + tail_;
+	// Fix up end if needed so that (begin, end) is always a
+	// valid range.
+	return head_ < tail_ ?
+		buffer_ + tail_ :
+		buffer_ + tail_ + capacity_;
 }
 
 
@@ -302,7 +316,7 @@ auto linear_ringbuffer_<T>::end() const noexcept -> const_iterator
 
 
 template<typename T>
-auto linear_ringbuffer_<T>::end() noexcept -> iterator
+auto linear_ringbuffer_<T>::write_head() noexcept -> iterator
 {
 	return buffer_ + tail_;
 }
@@ -430,10 +444,10 @@ errout:
 	// null, `capacity_` might be large enough that this overlaps some actual
 	// mappings.
 	if (addr) {
-		::munmap(addr, capacity_);
+		::munmap(addr, bytes);
 	}
 	if (addr2) {
-		::munmap(addr2, capacity_);
+		::munmap(addr2, bytes);
 	}
 	errno = error;
 	return -1;
