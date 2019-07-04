@@ -29,22 +29,25 @@ due to the mmap trick:
 
 # Usage
 
-The general idea is to use the buffer with C functions expecting a pointer
-and a size as argument, and after reading or writing to call `commit()` to
-adjust the write head or `consume()` to adjust the read head.
+The buffer provides two (pointer, length)-pairs that can be passed to C APIs,
+`(write_head(), free_size())` and `(read_head(), size())`.
+
+The general idea is to pass the appropriate one to a C function expecting
+a pointer and size, and afterwards to call `commit()` to adjust the write
+head or `consume()` to adjust the read head.
 
 Writing into the buffer:
 
     bev::linear_ringbuffer rb;
     FILE* f = fopen("input.dat", "r");
-    ssize_t n = ::read(fileno(f), rb.end(), rb.free_size());
+    ssize_t n = ::read(fileno(f), rb.write_head(), rb.free_size());
     rb.commit(n);
 
 Reading from the buffer:
 
     bev::linear_ringbuffer rb;
     FILE* f = fopen("output.dat", "w");
-    ssize_t n = ::write(fileno(f), rb.begin(), rb.size();
+    ssize_t n = ::write(fileno(f), rb.read_head(), rb.size();
     rb.consume(n);
 
 If there are multiple readers/writers, it is the calling code's
