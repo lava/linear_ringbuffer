@@ -115,11 +115,6 @@ namespace bev {
 // increases and decreases of the internal size.
 //
 //
-// # Performance
-//
-// I don't really know, but I'd be glad if someone could contribute benchmarks
-// with comparisons to other ringbuffer implementations.
-//
 // # Implementation Notes
 //
 // Note that only unsigned chars are allowed as the element type. While we could
@@ -151,7 +146,7 @@ namespace bev {
 // [1] Technically, we could use `MREMAP_FIXED` to enforce creation of the
 // second buffer, but at the cost of potentially unmapping random mappings made
 // by other threads, which seems much worse than just failing. I've spent some
-// time scouring the manpages and implementation of `mmap()` for some trick to
+// time scouring the manpages and implementation of `mmap()` for a technique to
 // make it work atomically but came up empty. If there is one, please tell me.
 //
 
@@ -376,11 +371,11 @@ int linear_ringbuffer_<T>::initialize(size_t minsize) noexcept
 	static const unsigned int PAGE_SIZE = ::sysconf(_SC_PAGESIZE);
 #endif
 
-	// Use `char*` over `void*` because we need to do arithmetic on them.
+	// Use `char*` instead of `void*` because we need to do arithmetic on them.
 	unsigned char* addr =nullptr;
 	unsigned char* addr2=nullptr;
 
-	// Technically, we could actually report sucess here since a zero-length
+	// Technically, we could also report sucess here since a zero-length
 	// buffer can't be legally used anyways.
 	if (minsize == 0) {
 		errno = EINVAL;
@@ -440,8 +435,8 @@ int linear_ringbuffer_<T>::initialize(size_t minsize) noexcept
 
 errout:
 	int error = errno;
-	// We actually have to check for non-null here, since even is `addr` is
-	// null, `capacity_` might be large enough that this overlaps some actual
+	// We actually have to check for non-null here, since even if `addr` is
+	// null, `bytes` might be large enough that this overlaps some actual
 	// mappings.
 	if (addr) {
 		::munmap(addr, bytes);

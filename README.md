@@ -55,6 +55,7 @@ responsibility to ensure that the reads/writes and the calls to
 produce/consume appear atomic to the buffer, otherwise data races
 will occur.
 
+
 # Errors and Exceptions
 
 The ringbuffer provides two way of initialization, one using exceptions
@@ -88,6 +89,7 @@ throw `bev::initialization_error` on failure, which is an exception class
 derived from `std::runtime_error`. The error code as described above is
 stored in the `errno_` member of the exception.
 
+
 # Concurrency
 
 The buffer is "slightly thread-safe": it is safe to use concurrently by a
@@ -99,41 +101,50 @@ If the ring buffer is used in a single-threaded application, the
 increases and decreases of the internal size.
 
 
-# Performance
+# Comparison
 
-I don't really know, but I'd be glad if someone could contribute benchmarks
-with comparisons to other ringbuffer implementations.
+Note that the main purpose of this class is not performance but convenience
+from erasing special-case handling when using the buffer, so no
+effort was put into creating a comprehensive benchmarking suite.
 
-# Implementation Notes
+Nonetheless, I was curious how this would compare to alternative approaches
+to implementing buffers for the same use-case, so I added an implementation
+of an `io_buffer` inspired the `boost::beast::flat_static_buffer` together
+with a simple [benchmark](./benchmark.cpp).
 
-Note that only unsigned chars are allowed as the element type. While we could
-in principle add an arbitrary element type as an additional argument, there
-would be comparatively strict requirements:
+On my machine, I do not observe any measurable performance difference between
+`linear_ringbuffer` and `io_buffer`.
 
- - It needs to be trivially relocatable
- - The size needs to exactly divide PAGE_SIZE
+However, simple `dd` reports almost 4 times the speed when piping from `/dev/zero`
+to `/dev/null`. I do not know if this is due to some inefficiency in the buffer
+implmenetation, in the test setup, or in the accounting, however inspecting
+the source code of `dd` did not reveal any crazy performance tricks. (If anyone
+does figure out the reason, please contact me)
 
-Since the main use case is interfacing with C APIs, it seems more pragmatic
-to just let the caller cast their data to `void*` rather than supporting
-arbitrary element types.
 
-The initialization of the buffer is subject to failure, and sadly this cannot
-be avoided. [1] There are two sources of errors:
+Aside from performance, here is an overview of the differences I'm aware of
+between `linear_ringbuffer` and `io_buffer`:
 
- 1) Resource exhaustion. The maximum amount of available memory, file
- descriptors, memory mappings etc. may be exceeded. This is similar to any
- other container type.
+The `linear_ringbuffer` is very pleasant to use because
+   - it has a nicer, very simple API, and
+   - it supports concurrent reading and writing.
 
- 2) To allocate the ringbuffer storage, first a memory region twice the
- required size is mapped, then it is shrunk by half and a copy of the first
- half of the buffer is mapped into the (now empty) second half.
- If some other thread is creating its own mapping in the second half after
- the buffer has been shrunk but before the second half has been mapped, this
- will fail. To ensure success, allocate the buffers before branching into
- multi-threaded code.
+However, on the negative side
+   - it takes twice as much address space (not actual memory, though)
+   - the initialization us unavoidable racy, and finally
+   - it needs some kernel+glibc support. While this shouldnt be problematic
+     in a desktop/server environment, as a non-representative data point I was
+     not able to cross-compile this for a mips-linux-uclibc environment.
 
-[1] Technically, we could use `MREMAP_FIXED` to enforce creation of the
-second buffer, but at the cost of potentially unmapping random mappings made
-by other threads, which seems much worse than just failing. I've spent some
-time scouring the manpages and implementation of `mmap()` for some trick to
-make it work atomically but came up empty. If there is one, please tell me.
+
+On the other hand, the `io_buffer`
+   - can use arbitrary existing buffer, i.e. there's no no need to allocate
+     memory at all,
+   - and even when it does allocate, the allocation is platform-independent,
+     i.e. does not depend on `mremap()` semantics.
+
+On the other hand,
+   - it does not support concurrency at all since calling `prepare()`
+     invalidates the read head,
+   - and the API is somewhat harder to use because depending on the access
+     pattern it might not be possible to user the full capacity of the buffer.
