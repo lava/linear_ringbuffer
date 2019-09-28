@@ -1,3 +1,10 @@
+# Contents
+
+Despite the name, this repository contains implementations for two different
+buffers, the `linear_ringbuffer` and the `io_buffer`. This `README` mainly
+describes the former, but please take a look at the comments at the top of
+`linear_ringbuffer.hpp` and `io_buffer.hpp` for the most specific instructions.
+
 # Linear Ringbuffer
 
 This is an implementation of a ringbuffer that will always expose its contents
