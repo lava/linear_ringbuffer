@@ -149,7 +149,7 @@ void io_buffer_<Allocator>::allocator_deleter::operator()(char* p)
 io_buffer_view::io_buffer_view() noexcept = default;
 
 
-io_buffer_view::io_buffer_view(char* data, size_t size) noexcept
+inline io_buffer_view::io_buffer_view(char* data, size_t size) noexcept
   : buffer_(data)
   , length_(size)
   , head_(0)
@@ -158,7 +158,7 @@ io_buffer_view::io_buffer_view(char* data, size_t size) noexcept
 }
 
 
-void io_buffer_view::assign(char* data, size_t size) noexcept
+inline void io_buffer_view::assign(char* data, size_t size) noexcept
 {
     buffer_ = data;
     length_ = size;
@@ -167,37 +167,37 @@ void io_buffer_view::assign(char* data, size_t size) noexcept
 }
 
 
-char* io_buffer_view::read_head() noexcept
+inline char* io_buffer_view::read_head() noexcept
 {
     return buffer_ + head_;
 }
 
 
-char* io_buffer_view::write_head() noexcept
+inline char* io_buffer_view::write_head() noexcept
 {
     return buffer_ + tail_;
 }
 
 
-size_t io_buffer_view::size() const noexcept
+inline size_t io_buffer_view::size() const noexcept
 {
     return tail_ - head_;
 }
 
 
-size_t io_buffer_view::capacity() const noexcept
+inline size_t io_buffer_view::capacity() const noexcept
 {
     return length_ - this->size();
 }
 
 
-size_t io_buffer_view::free_size() const noexcept
+inline size_t io_buffer_view::free_size() const noexcept
 {
     return length_ - tail_;
 }
 
 
-io_buffer_view::slab io_buffer_view::prepare(size_t n) noexcept
+inline io_buffer_view::slab io_buffer_view::prepare(size_t n) noexcept
 {
     // Make as much room as we can
     if (n > this->free_size()) {
@@ -216,14 +216,14 @@ io_buffer_view::slab io_buffer_view::prepare(size_t n) noexcept
 }
 
 
-void io_buffer_view::commit(std::size_t n) noexcept
+inline void io_buffer_view::commit(std::size_t n) noexcept
 {
     // assert: tail_ + n < size
     tail_ += n;
 }
 
 
-void io_buffer_view::consume(std::size_t n) noexcept
+inline void io_buffer_view::consume(std::size_t n) noexcept
 {
     // assert: size() <= n
     head_ += n;
@@ -233,7 +233,7 @@ void io_buffer_view::consume(std::size_t n) noexcept
 }
 
 
-void io_buffer_view::clear() noexcept
+inline void io_buffer_view::clear() noexcept
 {
     head_ = tail_ = 0;
 }
