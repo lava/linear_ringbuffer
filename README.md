@@ -1,9 +1,13 @@
 # Contents
 
 Despite the name, this repository contains implementations for two different
-buffers, the `linear_ringbuffer` and the `io_buffer`. This `README` mainly
-describes the former, but please take a look at the comments at the top of
-`linear_ringbuffer.hpp` and `io_buffer.hpp` for the most specific instructions.
+buffers:
+
+  * Linear Ringbuffer: `include/bev/linear_ringbuffer.hpp`
+  * IO Buffer:  `include/bev/io_buffer.hpp`
+
+This top-level `README` mainly describes the former. Take a look at the commentary
+in the respective sources for the most up-to-date and specific documentation.
 
 # Linear Ringbuffer
 
@@ -81,14 +85,14 @@ must not be called before the buffers have been initialized.
 
 There should be only three possible error values:
 
-  ENOMEM - The system ran out of memory, file descriptors, or the maximum
-           number of mappings would have been exceeded.
+  `ENOMEM` - The system ran out of memory, file descriptors, or the maximum
+             number of mappings would have been exceeded.
 
-  EINVAL - The `minsize` argument was 0, or 2*`minsize` did overflow.
+  `EINVAL` - The `minsize` argument was 0, or 2*`minsize` did overflow.
 
-  EAGAIN - Another thread allocated memory in the area that was intended
-           to use for the second copy of the buffer. Callers are encouraged
-           to try again.
+  `EAGAIN` - Another thread allocated memory in the area that was intended
+             to use for the second copy of the buffer. Callers are encouraged
+             to try again.
 
 If you prefer using exceptions, the `linear_ringbuffer(int minsize)`
 constructor will attempt to initialize the internal buffers immediately and
@@ -99,9 +103,8 @@ stored in the `errno_` member of the exception.
 
 # Concurrency
 
-The buffer is "slightly thread-safe": it is safe to use concurrently by a
-single reader and a single writer, but mutiple readers or multiple writers
-must serialize their accesses with a mutex.
+It is safe to be use the buffer concurrently for a single reader and a single writer,
+but mutiple readers or multiple writers must serialize their accesses with a mutex.
 
 If the ring buffer is used in a single-threaded application, the
 `linear_ringbuffer_st` class can be used to avoid paying for atomic
@@ -154,4 +157,4 @@ On the other hand,
    - it does not support concurrency at all since calling `prepare()`
      invalidates the read head,
    - and the API is somewhat harder to use because depending on the access
-     pattern it might not be possible to user the full capacity of the buffer.
+     pattern it might not be possible to use the full capacity of the buffer.
