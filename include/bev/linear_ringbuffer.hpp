@@ -18,8 +18,9 @@ namespace bev {
 //
 // This is an implementation of a ringbuffer that will always expose its contents
 // as a flat array using the mmap trick. It is mainly useful for interfacing with
-// C APIs, where this feature will save the programmer from doing a lot of pointer
-// arithmetic he would otherwise have to do.
+// C APIs, where this feature can vastly simplify program logic by eliminating all
+// special case handling when reading or writing data that wraps around the edge
+// of the ringbuffer.
 //
 //
 // # Data Layout
@@ -49,7 +50,7 @@ namespace bev {
 // `(write_head(), free_size())` and `(read_head(), size())`.
 //
 // The general idea is to pass the appropriate one to a C function expecting
-// a pointer and size, and afterwards to call `commit()` to adjust the write
+// a pointer and size, and to afterwards call `commit()` to adjust the write
 // head or `consume()` to adjust the read head.
 //
 // Writing into the buffer:
@@ -68,16 +69,17 @@ namespace bev {
 //
 // If there are multiple readers/writers, it is the calling code's
 // responsibility to ensure that the reads/writes and the calls to
-// produce/consume appear atomic to the buffer, otherwise data races
-// will occur.
+// produce/consume appear atomic to the buffer, otherwise data loss
+// can occur.
 //
 // # Errors and Exceptions
 //
 // The ringbuffer provides two way of initialization, one using exceptions
-// and one using error codes.
+// and one using error codes. After initialization is completed, all
+// operations on the buffer are `noexcept` and will never return an error.
 //
-// To use error codes, use the `linear_ringbuffer(delayed_init {})` constructor.
-// In this case, the internal buffers are not allocated until
+// To use error codes, the `linear_ringbuffer(delayed_init {})` constructor.
+// can be used. In this case, the internal buffers are not allocated until
 // `linear_ringbuffer::initialize()` is called, and all other member function
 // must not be called before the buffers have been initialized.
 //
@@ -87,28 +89,29 @@ namespace bev {
 //        [...]
 //     }
 //
-// There should be only three possible error values:
+// The possible error codes returned by `initialize()` are:
 //
-//  `ENOMEM` - The system ran out of memory, file descriptors, or the maximum
-//             number of mappings would have been exceeded.
+//  ENOMEM - The system ran out of memory, file descriptors, or the maximum
+//           number of mappings would have been exceeded.
 //
-//  `EINVAL` - The `minsize` argument was 0, or 2*`minsize` did overflow.
+//  EINVAL - The `minsize` argument was 0, or 2*`minsize` did overflow.
 //
-//  `EAGAIN` - Another thread allocated memory in the area that was intended
-//             to use for the second copy of the buffer. Callers are encouraged
-//             to try again.
+//  EAGAIN - Another thread allocated memory in the area that was intended
+//           to use for the second copy of the buffer. Callers are encouraged
+//           to try again.
 //
-// If you prefer using exceptions, the `linear_ringbuffer(int minsize)`
+// If exceptions are preferred, the `linear_ringbuffer(int minsize)`
 // constructor will attempt to initialize the internal buffers immediately and
-// throw `bev::initialization_error` on failure, which is an exception class
+// throw a `bev::initialization_error` on failure, which is an exception class
 // derived from `std::runtime_error`. The error code as described above is
 // stored in the `errno_` member of the exception.
 //
+//
 // # Concurrency
 //
-// The buffer is "slightly thread-safe": it is safe to use concurrently by a
-// single reader and a single writer, but mutiple readers or multiple writers
-// must serialize their accesses with a mutex.
+// It is safe to be use the buffer concurrently for a single reader and a
+// single writer, but mutiple readers or multiple writers must serialize
+// their accesses with a mutex.
 //
 // If the ring buffer is used in a single-threaded application, the
 // `linear_ringbuffer_st` class can be used to avoid paying for atomic
