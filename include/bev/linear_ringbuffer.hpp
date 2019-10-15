@@ -171,7 +171,7 @@ public:
 	linear_ringbuffer_(size_t minsize = 640*1024);
 	~linear_ringbuffer_();
 
-	// No-exception initialization interface, see description above.
+	// Noexcept initialization interface, see description above.
 	linear_ringbuffer_(const delayed_init) noexcept;
 	int initialize(size_t minsize) noexcept;
 
@@ -455,8 +455,8 @@ errout:
 template<typename T>
 linear_ringbuffer_<T>::~linear_ringbuffer_()
 {
-	munmap(buffer_, capacity_);
-	munmap(buffer_+capacity_, capacity_);
+	::munmap(buffer_, capacity_);
+	::munmap(buffer_+capacity_, capacity_);
 }
 
 
