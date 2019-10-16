@@ -38,9 +38,9 @@ namespace bev {
 //
 // # Memory Management
 //
-// Class `io_buffer` is using the `std::default_allocator` to allocate its internal buffer.
-// In order to use a custom allocator, `io_buffer_<Allocator> can be used.
-// In addition, in order to use a custom region of memory directly without allocations,
+// Class `io_buffer` is using `std::allocator<char>` to allocate its internal buffer.
+// In order to use a custom allocator, the template `io_buffer_<Allocator> can be used.
+// In addition, in order to use an existing region of memory directly, without allocations,
 // the class `io_buffer_view` can be used.
 
 using std::size_t;
@@ -55,6 +55,8 @@ public:
         size_t size;
     };
 
+    // NOTE: If the default constructor is used, the view is in undefined state
+    // until `assign()` is called.
     io_buffer_view() noexcept;
     io_buffer_view(char* data, size_t n) noexcept;
     void assign(char* data, size_t n) noexcept;
@@ -80,20 +82,17 @@ private:
 };
 
 
-// The actual `io_buffer` is an `io_buffer_view` that allocates its own storage.
+namespace detail {
+
 template<typename Allocator>
-class io_buffer_
+class io_buffer_storage
   : public Allocator
-  , public io_buffer_view
 {
 public:
-    static_assert(std::is_same<typename Allocator::value_type, char>::value,
-        "Only char allocators are currently supported.");
+    io_buffer_storage(size_t size);
+    io_buffer_storage(const Allocator& allocator, size_t size);
 
-    io_buffer_(size_t size);
-    io_buffer_(const Allocator& allocator, size_t size);
-
-private:
+protected:
     struct allocator_deleter {
         void operator()(char* p); 
 
@@ -102,6 +101,23 @@ private:
     };
 
     std::unique_ptr<char, allocator_deleter> buffer_;    
+};
+
+} // namespace detail
+
+
+// The actual `io_buffer` is an `io_buffer_view` that allocates its own storage.
+template<typename Allocator>
+class io_buffer_
+  : private detail::io_buffer_storage<Allocator>
+  , public io_buffer_view
+{
+public:
+    static_assert(std::is_same<typename Allocator::value_type, char>::value,
+        "Only char allocators are currently supported.");
+
+    io_buffer_(size_t size);
+    io_buffer_(const Allocator& allocator, size_t size);
 };
 
 
@@ -120,29 +136,45 @@ using io_buffer = io_buffer_<std::allocator<char>>;
 #include <stdexcept>
 
 namespace bev {
+namespace detail {
+
+template<typename Allocator>
+io_buffer_storage<Allocator>::io_buffer_storage(size_t size)
+  : Allocator()
+  , buffer_(this->Allocator::allocate(size), allocator_deleter {static_cast<Allocator*>(this), size})
+{
+}
+
+
+template<typename Allocator>
+io_buffer_storage<Allocator>::io_buffer_storage(const Allocator& alloc, size_t size)
+  : Allocator(alloc)
+  , buffer_(this->Allocator::allocate_(size), allocator_deleter {static_cast<Allocator*>(this), size})
+{
+}
+
+
+template<typename Allocator>
+void io_buffer_storage<Allocator>::allocator_deleter::operator()(char* p)
+{
+    alloc_->deallocate(p, size_);
+}
+
+} // namespace detail
+
 
 template<typename Allocator>
 io_buffer_<Allocator>::io_buffer_(size_t size)
-  : Allocator()
-  , buffer_(static_cast<Allocator*>(this)->allocate(size), allocator_deleter {static_cast<Allocator*>(this), size})
-{
-  this->io_buffer_view::assign(buffer_.get(), size);
-}
+  : detail::io_buffer_storage<Allocator>(size)
+  , io_buffer_view(this->detail::io_buffer_storage<Allocator>::buffer_.get(), size)
+{}
 
 
 template<typename Allocator>
 io_buffer_<Allocator>::io_buffer_(const Allocator& alloc, size_t size)
-  : Allocator(alloc)
-  , buffer_(static_cast<Allocator*>(this)->allocate_(size), allocator_deleter {static_cast<Allocator*>(this), size})
+  : detail::io_buffer_storage<Allocator>(alloc, size)
+  , io_buffer_view(this->detail::io_buffer_storage<Allocator>::buffer_.get(), size)
 {
-  this->io_buffer_view::assign(buffer_.get(), size);
-}
-
-
-template<typename Allocator>
-void io_buffer_<Allocator>::allocator_deleter::operator()(char* p)
-{
-    alloc_->deallocate(p, size_);
 }
 
 

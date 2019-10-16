@@ -298,7 +298,7 @@ auto linear_ringbuffer_<T>::read_head() noexcept -> iterator
 template<typename T>
 auto linear_ringbuffer_<T>::cend() const noexcept -> const_iterator
 {
-	// Fix up end if needed so that (begin, end) is always a
+	// Fix up `end` if needed so that [begin, end) is always a
 	// valid range.
 	return head_ < tail_ ?
 		buffer_ + tail_ :
@@ -482,7 +482,7 @@ void swap(
 
 
 inline initialization_error::initialization_error(int errno_)
-  : std::runtime_error(strerror(errno_))
+  : std::runtime_error(::strerror(errno_))
   , error(errno_)
 {}
 
