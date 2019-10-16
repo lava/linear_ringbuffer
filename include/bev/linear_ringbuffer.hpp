@@ -455,6 +455,8 @@ errout:
 template<typename T>
 linear_ringbuffer_<T>::~linear_ringbuffer_()
 {
+	// Either `buffer_` and `capacity_` are both initialized properly,
+	// or both are zero.
 	::munmap(buffer_, capacity_);
 	::munmap(buffer_+capacity_, capacity_);
 }
