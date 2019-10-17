@@ -126,23 +126,30 @@ int test_io_buffer()
 
 	std::cout << "success\n";
 
-	// Test 3: Use a custom allocator and verify the buffer gets deleted after use.
-        static bool allocated, deleted;
-
-        struct TestAllocator {
-		typedef char value_type;
-
-		char* allocate(size_t n) { allocated = true; return new char[n](); }
-		void deallocate(char* p, size_t n) { deleted = true; delete[] p; }
-	};
-
+	// Test 3: Use a custom memory region.
 	std::cout << "Test 3..." << std::flush;
-	allocated = deleted = false;
+
+	static int deletes;
+	deletes = 0;
+
+        struct Deleter {
+		Deleter() = default;
+		// The standard says that "A deleter’s state need never be copied, only moved or
+		// swapped as ownership changes." I'm not sure if that means that the state is not
+		// allowed to be copied, or that it is not required to copy the state for a conforming
+		// implementation. Let's assume the former to be safe.
+		Deleter(const Deleter&) { throw std::runtime_error("dont copy me :("); }
+		void operator()(char* c) { ++deletes; delete[] c; }
+	} static_deleter;
+	std::unique_ptr<char, Deleter&> p(new char[128], static_deleter);
+
 	{
-        	bev::io_buffer_<TestAllocator> iob2(4096);
+		bev::io_buffer buf(std::move(p), 128);
+		assert(buf.free_size() == 128);
+		assert(buf.capacity() == 128);
 	}
-	assert(allocated);
-	assert(deleted);
+
+	assert(deletes == 1);
 	std::cout << "success\n";
 }
 

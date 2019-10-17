@@ -1,5 +1,6 @@
 #include <cstdint>
 #include <memory>
+#include <functional>
 
 namespace bev {
 
@@ -36,12 +37,26 @@ namespace bev {
 // No concurrent operations are allowed.
 //
 //
+// # Exceptions
+//
+// Both constructors of `io_buffer` may throw `std::bad_alloc` on allocation
+// failure. (Although the constructor accepting a `unique_ptr` will in practice
+// not allocate, because the type-erased deleter should be small enough for the
+// small function optimization. However, this is not guaranteed.)
+//
+// All other operations on the buffer are noexcept. In particular, class `io_buffer_view`
+// provides a fully noexcept interface.
+//
+//
 // # Memory Management
 //
-// Class `io_buffer` is using `std::allocator<char>` to allocate its internal buffer.
-// In order to use a custom allocator, the template `io_buffer_<Allocator> can be used.
-// In addition, in order to use an existing region of memory directly, without allocations,
-// the class `io_buffer_view` can be used.
+// The constructor `io_buffer::io_buffer(std::unique_ptr<char> buffer, size_t size)` can be
+// used to pass ownership of an existing memory region to an `io_buffer`. Custom deleters
+// are supported with that constructor.
+//
+// The class `io_buffer_view` can be used to treat an existing memory region as an
+// `io_buffer` without assuming ownership of the underlying memory.
+//
 
 using std::size_t;
 
@@ -84,44 +99,33 @@ private:
 
 namespace detail {
 
-template<typename Allocator>
+// Class `io_buffer_storage` holds a pointer to the allocated memory region along
+// with a type-erased deleter.
 class io_buffer_storage
-  : public Allocator
 {
 public:
-    io_buffer_storage(size_t size);
-    io_buffer_storage(const Allocator& allocator, size_t size);
+    template<typename Deleter>
+    io_buffer_storage(std::unique_ptr<char, Deleter> storage, size_t size);
 
 protected:
-    struct allocator_deleter {
-        void operator()(char* p); 
-
-        Allocator* alloc_;
-        size_t size_;
-    };
-
-    std::unique_ptr<char, allocator_deleter> buffer_;    
+    std::unique_ptr<char, std::function<void(char*)>> buffer_;    
 };
 
 } // namespace detail
 
 
 // The actual `io_buffer` is an `io_buffer_view` that allocates its own storage.
-template<typename Allocator>
-class io_buffer_
-  : private detail::io_buffer_storage<Allocator>
+class io_buffer
+  : private detail::io_buffer_storage
   , public io_buffer_view
 {
 public:
-    static_assert(std::is_same<typename Allocator::value_type, char>::value,
-        "Only char allocators are currently supported.");
+    io_buffer(size_t size);
 
-    io_buffer_(size_t size);
-    io_buffer_(const Allocator& allocator, size_t size);
+    template<typename Deleter>
+    io_buffer(std::unique_ptr<char, Deleter> storage, size_t size);
 };
 
-
-using io_buffer = io_buffer_<std::allocator<char>>;
 
 } // namespace bev
 
@@ -138,42 +142,40 @@ using io_buffer = io_buffer_<std::allocator<char>>;
 namespace bev {
 namespace detail {
 
-template<typename Allocator>
-io_buffer_storage<Allocator>::io_buffer_storage(size_t size)
-  : Allocator()
-  , buffer_(this->Allocator::allocate(size), allocator_deleter {static_cast<Allocator*>(this), size})
+template<typename Deleter>
+io_buffer_storage::io_buffer_storage(std::unique_ptr<char, Deleter> storage, size_t size)
 {
-}
-
-
-template<typename Allocator>
-io_buffer_storage<Allocator>::io_buffer_storage(const Allocator& alloc, size_t size)
-  : Allocator(alloc)
-  , buffer_(this->Allocator::allocate_(size), allocator_deleter {static_cast<Allocator*>(this), size})
-{
-}
-
-
-template<typename Allocator>
-void io_buffer_storage<Allocator>::allocator_deleter::operator()(char* p)
-{
-    alloc_->deallocate(p, size_);
+    // Can use `if constexpr` here in C++17.
+    if (std::is_reference<Deleter>::value) {
+        std::function<void(char*)> deleter = std::ref(storage.get_deleter());
+        buffer_ = std::unique_ptr<char, std::function<void(char*)>>{storage.release(), deleter};
+    } else {
+        // Non-reference deleters must be at least MoveConstructible.
+        buffer_ = std::unique_ptr<char, std::function<void(char*)>>{
+            storage.release(), std::function<void(char*)>(std::move(storage.get_deleter()) )};
+    }
 }
 
 } // namespace detail
 
 
-template<typename Allocator>
-io_buffer_<Allocator>::io_buffer_(size_t size)
-  : detail::io_buffer_storage<Allocator>(size)
-  , io_buffer_view(this->detail::io_buffer_storage<Allocator>::buffer_.get(), size)
-{}
+io_buffer::io_buffer(size_t size)
+  : detail::io_buffer_storage(std::unique_ptr<char>(std::allocator<char>().allocate(size)), size)
+  , io_buffer_view(this->detail::io_buffer_storage::buffer_.get(), size)
+{
+  char* storage = detail::io_buffer_storage::buffer_.get();
+  // In C++17, the loop can be replaced by
+  // `std::uninitialized_default_construct(storage, storage+size)`.
+  for (size_t i=0; i<size; ++i) {
+    new (storage+i) char;
+  }
+}
 
 
-template<typename Allocator>
-io_buffer_<Allocator>::io_buffer_(const Allocator& alloc, size_t size)
-  : detail::io_buffer_storage<Allocator>(alloc, size)
-  , io_buffer_view(this->detail::io_buffer_storage<Allocator>::buffer_.get(), size)
+template<typename Deleter>
+io_buffer::io_buffer(std::unique_ptr<char, Deleter> storage, size_t size)
+  : detail::io_buffer_storage(std::move(storage), size)
+  , io_buffer_view(this->detail::io_buffer_storage::buffer_.get(), size)
 {
 }
 
