@@ -1,7 +1,7 @@
 # Contents
 
-Despite the name, this repository contains implementations for two different
-buffers:
+Despite the name, this repository contains implementations for **two** different
+ringbuffers:
 
   * Linear Ringbuffer: `include/bev/linear_ringbuffer.hpp`
   * IO Buffer:  `include/bev/io_buffer.hpp`

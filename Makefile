@@ -13,6 +13,7 @@ tests: tests.cpp $(HEADERS)
 	g++ $< -g3 -I./include -o $@ $(CFLAGS) $(CXXFLAGS)
 
 
-PREFIX ?= /usr
+PREFIX ?= /usr/local
 install:
-	install -d include/ $(DESTDIR)/$(PREFIX)
+	install -d $(DESTDIR)$(PREFIX)
+	cp -R include/ $(DESTDIR)$(PREFIX)
